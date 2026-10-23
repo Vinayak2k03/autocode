@@ -1,0 +1,105 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/lib/database/generated"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum RepositorySourceType {
+  github_public
+  zip
+
+  @@map("repository_source_type")
+}
+
+enum RepositoryStatus {
+  pending
+  indexing
+  ready
+  failed
+
+  @@map("repository_status")
+}
+
+enum TaskStatus {
+  queued
+  investigating
+  awaiting_approval
+  implementing
+  testing
+  completed
+  failed
+  cancelled
+  paused
+
+  @@map("task_status")
+}
+
+model Profile {
+  id          String    @id @db.Uuid @map("id")
+  displayName String?   @map("display_name")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  projects    Project[]
+
+  @@map("profiles")
+}
+
+model Project {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ownerId     String    @map("owner_id") @db.Uuid
+  name        String
+  description String?
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  owner        Profile      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  repositories Repository[]
+  tasks        Task[]
+
+  @@unique([ownerId, name], map: "projects_owner_id_name_key")
+  @@index([ownerId, createdAt(sort: Desc)], map: "projects_owner_id_created_at_idx")
+  @@map("projects")
+}
+
+model Repository {
+  id            String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId     String               @map("project_id") @db.Uuid
+  name          String
+  sourceType    RepositorySourceType @map("source_type")
+  sourceUrl     String?              @map("source_url")
+  defaultBranch String?              @map("default_branch")
+  headSha       String?              @map("head_sha")
+  status        RepositoryStatus     @default(pending)
+  createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks   Task[]
+
+  @@unique([projectId, name], map: "repositories_project_id_name_key")
+  @@index([projectId], map: "repositories_project_id_idx")
+  @@map("repositories")
+}
+
+model Task {
+  id           String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId    String      @map("project_id") @db.Uuid
+  repositoryId String?     @map("repository_id") @db.Uuid
+  createdBy    String      @map("created_by") @db.Uuid
+  title        String
+  description  String?
+  status       TaskStatus  @default(queued)
+  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  project    Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  repository Repository? @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
+
+  @@index([projectId], map: "tasks_project_id_idx")
+  @@index([repositoryId], map: "tasks_repository_id_idx")
+  @@index([createdBy], map: "tasks_created_by_idx")
+  @@map("tasks")
+}
